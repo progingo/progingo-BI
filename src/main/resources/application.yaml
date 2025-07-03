@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: progingo-BI
+  profiles:
+    active: local
+  servlet:
+    multipart:
+      #?????100MB
+      max-file-size: 50MB
+      #???????100
+      max-request-size: 50MB
