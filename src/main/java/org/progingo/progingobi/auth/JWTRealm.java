@@ -8,8 +8,8 @@ import org.apache.shiro.authz.AuthorizationInfo;
 import org.apache.shiro.authz.SimpleAuthorizationInfo;
 import org.apache.shiro.realm.AuthorizingRealm;
 import org.apache.shiro.subject.PrincipalCollection;
-import org.progingo.domain.dto.UserDTO;
-import org.progingo.util.TokenUtil;
+import org.progingo.progingobi.domain.dto.UserDTO;
+import org.progingo.progingobi.util.TokenUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -37,13 +37,8 @@ public class JWTRealm extends AuthorizingRealm {
 
 
         SimpleAuthorizationInfo simpleAuthorizationInfo = new SimpleAuthorizationInfo();
-        if (!user.getIsStore()){//普通用户
-            simpleAuthorizationInfo.addRole("user");
-            if (user.getIsTakeaway())
-                simpleAuthorizationInfo.addRole("takeaway");
-        }else {//商家
-            simpleAuthorizationInfo.addRole("store");
-        }
+
+        simpleAuthorizationInfo.addRole("user");
 
         return simpleAuthorizationInfo;
     }
@@ -77,8 +72,6 @@ public class JWTRealm extends AuthorizingRealm {
                 userCache,
                 token,
                 this.getName());
-
         return info;
     }
-
 }
