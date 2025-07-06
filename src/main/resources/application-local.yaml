@@ -22,7 +22,8 @@ spring:
       chat:
         options:
           model: qwen-plus
-
+server:
+  port: 8002
 
 logging:
   level:
