@@ -1,6 +1,7 @@
 package org.progingo.progingobi.service;
 
 import cn.hutool.core.io.FileUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.apache.commons.lang3.StringUtils;
 import org.progingo.progingobi.controller.request.GenChartByAiRequest;
 import org.progingo.progingobi.domain.entity.Chart;
@@ -72,5 +73,12 @@ public class ChartService {
         biMessageProducer.sendMessage(String.valueOf(newChartId));
 
         return JsonResult.ok(chart.getId());
+    }
+
+    public JsonResult analysisList(Integer userId) {
+        List<Chart> charts = chartMapper.selectList(new LambdaQueryWrapper<Chart>()
+                .eq(Chart::getUserId, userId)
+                .eq(Chart::getIsDelete, 0));
+        return JsonResult.ok(charts);
     }
 }

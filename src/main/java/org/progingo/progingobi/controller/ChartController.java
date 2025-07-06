@@ -41,4 +41,15 @@ public class ChartController {
         return jsonResult;
     }
 
+    @GetMapping("/analysisList")
+    @RequiresRoles({"user"})
+    public JsonResult analysisList() {
+        Subject subject = SecurityUtils.getSubject();
+        UserDTO user = (UserDTO) subject.getPrincipal();
+
+        JsonResult jsonResult = chartService.analysisList(user.getId());
+        ThrowUtils.throwIf(jsonResult.getState() != 200, ErrorCode.OPERATION_ERROR);
+        return jsonResult;
+    }
+
 }
