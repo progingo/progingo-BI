@@ -19,15 +19,20 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadPoolExecutor;
+
 @Component
 @Slf4j
 public class BiMessageConsumer {
 
     @Autowired
     private ChartMapper chartMapper;
-
     @Autowired
     private AiManager aiManager;
+    @Autowired
+    private ThreadPoolExecutor threadPoolExecutor;
 
     // 指定程序监听的消息队列和确认机制
     @SneakyThrows
@@ -37,51 +42,81 @@ public class BiMessageConsumer {
             key = {BiMqConstant.BI_ROUTING_KEY}
     )}, ackMode = "MANUAL")
     public void receiveMessage(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) {
-        log.info("接受到消息: {}", message);
-        if (StringUtils.isBlank(message)) {
-            // 如果失败，消息拒绝
-            channel.basicNack(deliveryTag, false, false);
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "消息为空");
-        }
-        //获取数据库信息
-        long chartId = Long.parseLong(message);
-        Chart chart = chartMapper.selectById(chartId);
-        if (chart == null) {
-            channel.basicNack(deliveryTag, false, false);
-            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "图表为空");
-        }
-        // 先修改图表任务状态为 “执行中”。等执行成功后，修改为 “已完成”、保存执行结果；执行失败后，状态修改为 “失败”，记录任务失败信息。
-        Chart updateChart = new Chart();
-        updateChart.setId(chart.getId());
-        updateChart.setStatus("running");
-        int r = chartMapper.updateById(updateChart);
-        if (r != 1) {
-            channel.basicNack(deliveryTag, false, false);
-            handleChartUpdateError(chart.getId(), "更新图表执行中状态失败");
-            return;
-        }
-        // 调用 AI
-        String result = aiManager.analysisFormChat(chartId, buildUserInput(chart));
-        String[] splits = result.split("【【【【【");
-        if (splits.length < 3) {
-            channel.basicNack(deliveryTag, false, false);
-            handleChartUpdateError(chart.getId(), "AI 生成错误");
-            return;
-        }
-        String genChart = splits[1].trim();
-        String genResult = splits[2].trim();
-        Chart updateChartResult = new Chart();
-        updateChartResult.setId(chart.getId());
-        updateChartResult.setGenChart(genChart);
-        updateChartResult.setGenResult(genResult);
-        updateChartResult.setStatus("succeed");
-        int updateResult = chartMapper.updateById(updateChartResult);
-        if (updateResult != 1) {
-            channel.basicNack(deliveryTag, false, false);
-            handleChartUpdateError(chart.getId(), "更新图表成功状态失败");
-        }
-        // 消息确认
-        channel.basicAck(deliveryTag, false);
+
+        // TODO 建议处理任务队列满了后,抛异常的情况(因为提交任务报错了,前端会返回异常)
+        CompletableFuture.runAsync(() -> {
+            log.info("接受到消息: {}", message);
+            if (StringUtils.isBlank(message)) {
+                // 如果失败，消息拒绝
+                try {
+                    channel.basicNack(deliveryTag, false, false);
+                } catch (IOException e) {
+                    throw new BusinessException(ErrorCode.SYSTEM_ERROR, "消息拒绝失败");
+                }
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "消息为空");
+            }
+            //获取数据库信息
+            long chartId = Long.parseLong(message);
+            Chart chart = chartMapper.selectById(chartId);
+            if (chart == null) {
+                try {
+                    channel.basicNack(deliveryTag, false, false);
+                } catch (IOException e) {
+                    throw new BusinessException(ErrorCode.SYSTEM_ERROR, "消息拒绝失败");
+                }
+                throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "图表为空");
+            }
+            // 先修改图表任务状态为 “执行中”。等执行成功后，修改为 “已完成”、保存执行结果；执行失败后，状态修改为 “失败”，记录任务失败信息。
+            Chart updateChart = new Chart();
+            updateChart.setId(chart.getId());
+            updateChart.setStatus("running");
+            int r = chartMapper.updateById(updateChart);
+            if (r != 1) {
+                try {
+                    channel.basicNack(deliveryTag, false, false);
+                } catch (IOException e) {
+                    throw new BusinessException(ErrorCode.SYSTEM_ERROR, "消息拒绝失败");
+                }
+                handleChartUpdateError(chart.getId(), "更新图表执行中状态失败");
+                return;
+            }
+            // 调用 AI
+            String result = aiManager.analysisFormChat(chartId, buildUserInput(chart));
+            String[] splits = result.split("【【【【【");
+            if (splits.length < 3) {
+                try {
+                    channel.basicNack(deliveryTag, false, false);
+                } catch (IOException e) {
+                    throw new BusinessException(ErrorCode.SYSTEM_ERROR, "消息拒绝失败");
+                }
+                handleChartUpdateError(chart.getId(), "AI 生成错误");
+                return;
+            }
+            String genChart = splits[1].trim();
+            String genResult = splits[2].trim();
+            Chart updateChartResult = new Chart();
+            updateChartResult.setId(chart.getId());
+            updateChartResult.setGenChart(genChart);
+            updateChartResult.setGenResult(genResult);
+            updateChartResult.setStatus("succeed");
+            int updateResult = chartMapper.updateById(updateChartResult);
+            if (updateResult != 1) {
+                try {
+                    channel.basicNack(deliveryTag, false, false);
+                } catch (IOException e) {
+                    throw new BusinessException(ErrorCode.SYSTEM_ERROR, "消息拒绝失败");
+                }
+                handleChartUpdateError(chart.getId(), "更新图表成功状态失败");
+            }
+            // 消息确认
+            try {
+                channel.basicAck(deliveryTag, false);
+            } catch (IOException e) {
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "消息确认失败");
+            }
+        },threadPoolExecutor);
+
+
     }
 
     /**
