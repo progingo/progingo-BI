@@ -5,11 +5,13 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.apache.commons.lang3.StringUtils;
 import org.progingo.progingobi.controller.request.GenChartByAiRequest;
 import org.progingo.progingobi.domain.entity.Chart;
+import org.progingo.progingobi.domain.entity.UserChart;
 import org.progingo.progingobi.exception.ErrorCode;
 import org.progingo.progingobi.exception.ThrowUtils;
 import org.progingo.progingobi.manager.RedisLimiterManager;
-import org.progingo.progingobi.mapper.ChartMapper;
+import org.progingo.progingobi.mapper.UserChartMapper;
 import org.progingo.progingobi.mq.BiMessageProducer;
+import org.progingo.progingobi.repository.ChartRepository;
 import org.progingo.progingobi.util.ExcelUtils;
 import org.progingo.progingobi.util.JsonResult;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,16 +21,19 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class ChartService {
 
     @Autowired
-    private ChartMapper chartMapper;
+    private ChartRepository chartRepository;
     @Autowired
     private RedisLimiterManager redisLimiterManager;
     @Autowired
     private BiMessageProducer biMessageProducer;
+    @Autowired
+    private UserChartMapper userChartMapper;
 
     public JsonResult analysisFormByAi(Integer userId, GenChartByAiRequest genChartByAiRequest, MultipartFile multipartFile) {
         String name = genChartByAiRequest.getName();//名称
@@ -64,21 +69,23 @@ public class ChartService {
         chart.setStatus("0");
         chart.setUserId(userId);
         chart.setCreateTime(LocalDateTime.now());
-        chart.setIsDelete(0);
 
-        int r = chartMapper.insert(chart);
-        ThrowUtils.throwIf(!(r == 1), ErrorCode.SYSTEM_ERROR, "图表保存失败");
-        long newChartId = chart.getId();
+        String chartId = chartRepository.insertChart(chart);
+        ThrowUtils.throwIf(chartId == null, ErrorCode.SYSTEM_ERROR, "图表保存失败");
         //提交给消息队列异步处理
-        biMessageProducer.sendMessage(String.valueOf(newChartId));
+        biMessageProducer.sendMessage(chartId);
 
-        return JsonResult.ok(chart.getId());
+        return JsonResult.ok(chartId);
     }
 
     public JsonResult analysisList(Integer userId) {
-        List<Chart> charts = chartMapper.selectList(new LambdaQueryWrapper<Chart>()
-                .eq(Chart::getUserId, userId)
-                .eq(Chart::getIsDelete, 0));
+        List<UserChart> userCharts = userChartMapper.selectList(new LambdaQueryWrapper<UserChart>()
+                .eq(UserChart::getUserId, userId)
+                .eq(UserChart::getIsDelete, false));
+
+        List<Chart> charts = userCharts.stream()
+                .map(x -> chartRepository.queryChart(x.getChartId()))
+                .collect(Collectors.toList());
         return JsonResult.ok(charts);
     }
 }

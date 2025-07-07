@@ -2,4 +2,37 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="org.progingo.progingobi.mapper.ChartMapper">
 
+    <resultMap id="chartEntityMap" type="org.progingo.progingobi.domain.entity.Chart">
+        <result property="goal" column="goal"></result>
+        <result property="name" column="name"></result>
+        <result property="chartData" column="chart_data"></result>
+        <result property="chartType" column="chart_type"></result>
+        <result property="genChart" column="gen_chart"></result>
+        <result property="genResult" column="gen_result"></result>
+        <result property="status" column="status"></result>
+        <result property="execMessage" column="exec_message"></result>
+    </resultMap>
+
+    <insert id="createChartDataTable" parameterType="string">
+        ${createSql}
+    </insert>
+
+    <insert id="insertChartData" parameterType="string">
+        ${insertSql}
+    </insert>
+
+    <select id="queryChartData" resultMap="chartEntityMap">
+        ${querySql}
+    </select>
+
+    <update id="updateChartData" parameterType="string">
+        update ${tableName} set gen_chart = #{genChart},gen_result = #{genResult},status = #{status}, exec_message = #{execMessage}
+    </update>
+
+
+    <update id="updateStatus" parameterType="string">
+        update ${tableName} set status = #{status}
+    </update>
+
+
 </mapper>
